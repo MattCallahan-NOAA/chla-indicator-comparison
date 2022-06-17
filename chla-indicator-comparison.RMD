@@ -24,7 +24,6 @@ library(flextable)
 ## MODIS
 MODIS data were downloaded from a google folder where Jordan stored them from previous efforts https://drive.google.com/drive/u/1/folders/1mhwQ70mjLrkiQYiQ2oNHx08Q7IlL8Q3-
 
-**Import MODIS data**
 ```{r}
 #EBS
 mod_ebs<-readRDS("Data/MODIS/merged_8day_2003_2021_EBS.RDS")
@@ -34,9 +33,29 @@ mod_ebs<-readRDS("Data/MODIS/merged_8day_2003_2021_EBS.RDS")
 
 ## OC-CCI
 **Download 8 day OC-CCI data**
+If we import MODIS into AKFIN we will probably import daily chlorophyll and calculate 8 day values, but for now I will download the 8 day product.
 ```{r}
 #Download one day of grid east of the dateline
+#extent 47, 70, -130, -180
+   download.file(url = "https://coastwatch.pfeg.noaa.gov/erddap/griddap/pmlEsaCCI50OceanColorDaily.nc?chlor_a%5B(2021-06-01T00:00:00Z)%5D%5B(69):(47)%5D%5B(-179.99):(-130)%5D&.draw=surface&.vars=longitude%7Clatitude%7Cchlor_a&.colorBar=%7C%7C%7C%7C%7C&.bgColor=0xffccccff", method = "libcurl", mode="wb",destfile = "Data/OCCCI/occci_06012021.nc")
 
+#import as data file
+tidy_chl<-function(file) {
+  tidync(file) %>% 
+  hyper_tibble()%>% 
+  mutate(date=as_datetime(time),
+                  chlorophyll=round(chlor_a,3))
+  
+}
+
+#rounding fields if needed
+ #        lonc=as.numeric(ifelse(longitude<0, #ifelse statement keeps +- lons the same length
+  #                              substr(longitude,1,8),
+  #                              substr(longitude,1,7))), 
+   #      latc=as.numeric(substr(latitude,1,6)), 
+         
+
+occ<-tidy_chl("Data/OCCCI/occci_06012021.nc")
 #Make lookup table similar to process for VIIRS
 
 #Download BS and GOA rectangles
@@ -61,14 +80,21 @@ data <- httr::content(httr::GET("https://apex.psmfc.org/akfin/data_marts/akmp/es
   filter(grepl('Chlorophylla', INDICATOR_NAME))
 
 #all ours?
-unique(data2$CONTACT) #yes
+unique(data$CONTACT) #yes
 
 #Descriptions
 data%>%group_by(INDICATOR_NAME)%>%
-  summarise(unique(PRODUCT_DESCRIPTION))%>%
+  summarise(descritption=unique(PRODUCT_DESCRIPTION),
+            submission_year=unique(SUBMISSION_YEAR))%>%
    flextable()%>%
   theme_box()
+  write.csv("esp_chlorophyll_indicators.csv")
 
+  #csv to send to Kalei to confirm active indicators
+  data%>%group_by(INDICATOR_NAME)%>%
+  summarise(descritption=unique(PRODUCT_DESCRIPTION),
+            submission_year=unique(SUBMISSION_YEAR))%>%
+  write.csv("esp_chlorophyll_indicators.csv")
 ```
 **AMJ_Chlorophylla_Biomass_SEBS_Satellite**
 
