@@ -57,6 +57,21 @@ tidy_chl<-function(file) {
 
 occ<-tidy_chl("Data/OCCCI/occci_06012021.nc")
 #Make lookup table similar to process for VIIRS
+#max and min values
+max(occ$latitude);min(occ$latitude)
+max(occ$longitude);min(occ$longitude)
+#create new vectors with 4 decimal places
+lon_lkp<-c(seq(from=-179.9792, to=-129.9792, by=0.0416)) #east
+#           seq(from=167.0063, to=179.9813, by=0.0375)) #not adding west of dateline for now
+lat_lkp<-seq(from=46.97917, to=69.02083, by=0.04167)
+
+#create grid
+viirs_4k_grid<-expand.grid(lon_lkp, lat_lkp)%>%
+           mutate(lonc=as.numeric(ifelse(Var1<0, 
+                                substr(Var1,1,8),
+                                substr(Var1,1,7))), #from Jordan's code
+         latc=as.numeric(substr(Var2,1,6)))%>%
+  rename(latitude=Var2, longitude=Var1)
 
 #Download BS and GOA rectangles
 
