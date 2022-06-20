@@ -33,12 +33,16 @@ mod_ebs<-readRDS("Data/MODIS/merged_8day_2003_2021_EBS.RDS")
 
 ## OC-CCI
 **Download 8 day OC-CCI data**
-If we import MODIS into AKFIN we will probably import daily chlorophyll and calculate 8 day values, but for now I will download the 8 day product.
+If we import MODIS into AKFIN we will probably import daily chlorophyll and calculate 8 day values, but for now I will download the 8 day product. Run once.
 ```{r}
 #Download one day of grid east of the dateline
 #extent 47, 70, -130, -180
    download.file(url = "https://coastwatch.pfeg.noaa.gov/erddap/griddap/pmlEsaCCI50OceanColorDaily.nc?chlor_a%5B(2021-06-01T00:00:00Z)%5D%5B(69):(47)%5D%5B(-179.99):(-130)%5D&.draw=surface&.vars=longitude%7Clatitude%7Cchlor_a&.colorBar=%7C%7C%7C%7C%7C&.bgColor=0xffccccff", method = "libcurl", mode="wb",destfile = "Data/OCCCI/occci_06012021.nc")
+```
 
+**convert OCC to usable format**
+Once file is downloaded, the following code converts to a data frame
+```{r}
 #import as data file
 tidy_chl<-function(file) {
   tidync(file) %>% 
@@ -56,29 +60,114 @@ tidy_chl<-function(file) {
          
 
 occ<-tidy_chl("Data/OCCCI/occci_06012021.nc")
-#Make lookup table similar to process for VIIRS
-#max and min values
-max(occ$latitude);min(occ$latitude)
-max(occ$longitude);min(occ$longitude)
-#create new vectors with 4 decimal places
-lon_lkp<-c(seq(from=-179.9792, to=-129.9792, by=0.0416)) #east
-#           seq(from=167.0063, to=179.9813, by=0.0375)) #not adding west of dateline for now
-lat_lkp<-seq(from=46.97917, to=69.02083, by=0.04167)
-
-#create grid
-viirs_4k_grid<-expand.grid(lon_lkp, lat_lkp)%>%
-           mutate(lonc=as.numeric(ifelse(Var1<0, 
-                                substr(Var1,1,8),
-                                substr(Var1,1,7))), #from Jordan's code
-         latc=as.numeric(substr(Var2,1,6)))%>%
-  rename(latitude=Var2, longitude=Var1)
-
-#Download BS and GOA rectangles
-
-#clip and merge with new lookup table
 
 ```
 
+**Create OCC lookup table**
+```{r}
+#Make lookup table similar to process for VIIRS
+
+#Identify max and min values
+max(occ$latitude);min(occ$latitude)
+max(occ$longitude);min(occ$longitude)
+
+#Create string of 20 lowest longitudes to test matching the lookup table
+lon<-as.numeric(substr(head(sort(unique(occ$longitude)), 21), 1, 9))
+#Create string to match with longitudes for lookup table
+lonlkp<-as.numeric(#convert to number
+  substr(#cut to four decimals
+    #create sequence
+    c(seq(from=-179.97916666666666667, to=-179.1458, by=0.0416666666666667)),1,9))
+#compare
+lon
+lonlkp
+lon-lonlkp
+
+#now for full 
+#create new vectors with 4 decimal places
+lon_lkp<-as.numeric(substr(c(seq(from=-179.97916666666666667, to=-129.9791, by=0.0416666666666667)), 1, 9)) #east
+#           seq(from=167.0063, to=179.9813, by=0.0375)) #not adding west of dateline for now
+
+#does this still work for the end of the vector?
+lont<-as.numeric(substr(tail(sort(unique(occ$longitude)), 15), 1, 9))
+
+lonlkpt<-tail(lon_lkp,15)
+lonlkpt
+lont
+lont-lonlkpt
+
+#OK, that was annoying... but I think that works. 
+
+lat_lkp<-as.numeric(substr(seq(from=46.97916666666666667, to=69.0209, by=0.0416666666666667), 1, 7))
+
+#compare with latitude vector
+lath<-as.numeric(substr(head(sort(unique(occ$latitude)), 15), 1, 7))
+latt<-as.numeric(substr(tail(sort(unique(occ$latitude)), 15), 1, 7))
+
+lath-head(lat_lkp,15)#start works
+latt-tail(lat_lkp,15)#lkp extends higher than data, I'm just going to run it...
+
+#create grid
+occ_grid<-expand.grid(lon_lkp, lat_lkp)%>%
+  rename(latitude=Var2, longitude=Var1)
+
+#join chla data with lookup table.   
+test_join<-occ%>%
+  mutate(latitude=as.numeric(substr(latitude, 1, 7)),
+         longitude=as.numeric(substr(longitude, 1, 9)))%>%
+  inner_join(occ_grid, by=c("longitude"="longitude", "latitude"="latitude"))         
+
+#Fuck yeah!
+```
+
+**Add marine area fields**
+We need the same fields as in the crw sst spatial lookup table. 
+
+*statefed* Flags if the location is in "state", "fed" or "intl" (international) waters.    
+
+*stat_area* ADF&G statistical area (there are 1758 of these total) <http://www.adfg.alaska.gov/index.cfm?adfg=fishingCommercialByFishery.statmaps>    
+
+*nmfsarea*  NMFS management areas <https://www.fisheries.noaa.gov/alaska/sustainable-fisheries/alaska-fisheries-figures-maps-boundaries-regulatory-areas-and-zones>   
+
+    
+
+*Ecosystem*  From the AK_MES shapefile created for the ESRs. The shapefiles has four areas but we omitted Arctic.    
+
+*Ecosystem_sub*  The AK_MES shapefile did not include all of the ESR subregions so I created them. NBS / SEBS are split at 60. EGOA and WGOA are split at 144. The eastern and western Aleutians are split at -177 and positive 177, with the central region in between.  
+
+*bsierp_name* and *bsierp_id*  Name and ID of BSIERP area.
+
+*crab areas* Bering Sea crab management areas: *nbs_crab*, *bs_king*, and *bs_tanner*.
+
+*depth*  This is the GEBCO bathymetry dataset as pulled by the marmap package using resolution=1. Data have been filtered for depths<0  
+
+We will use ADFG for our spatial extent. 1) they cover the rest of the ecosystem, NMFS, and BSIERP regions except the arctic, 2) The CRW lookup table uses the same extent, and 3) Spatial aggregations by stat area may become an importan seconday product as this data is gap-rich. 
+
+**Download sptial data**
+Spatial Data were loaded from two esri file geodatabases prepared by Brett Holycross at PSMFC. The Alaska Marine Management Areas layers contain ADFG, NMFS, and BSIERP regions, that have long been static. Ecosystem and Ecosystem subareas reflect the updated boundaries requested by Ecosystem Status Report Authors in 2022. The Bering Sea Crab area layers were created in consultation with Erin Fedewa (NMFS).
+
+```{r}
+#add eval=FALSE before knitting
+#load spatial data
+#marine management areas
+Management <- st_read(dsn="Data/GIS/Alaska_Marine_Management_Areas.gdb", layer="Alaska_Marine_Areas_dd")
+unique(Management$Area_Type)
+ADFG<-Management%>%filter(Area_Type=="ADFG Stat Area")%>%
+  dplyr::select(STAT_AREA, WATERS_COD, Shape_Length, Shape_Area, Shape)
+NMFS<-Management%>%filter(Area_Type=="NMFS Reporting Area")%>%
+  dplyr::select(NMFS_REP_AREA, Shape_Length, Shape_Area, Shape)
+ESR<-Management%>%filter(Area_Type=="Ecosystem Subarea")%>%
+  dplyr::select(Ecosystem_Subarea, Shape_Length, Shape_Area, Shape)
+LME<-Management%>%filter(Area_Type=="Ecosystem Area")%>%
+  dplyr::select(Ecosystem_Area, Shape_Length, Shape_Area, Shape)
+BSIERP<-Management%>%filter(Area_Type=="BSIERP Region")%>%
+  dplyr::select(BSIERP_ID, BSIERP_Region_Name, Shape_Length, Shape_Area, Shape)
+#crab areas
+nbs_crab <- st_read(dsn="Data/AK_Crab_Management_Areas.gdb", layer="NBS_Crab_dd")
+bs_tanner_crab <- st_read(dsn="Data/AK_Crab_Management_Areas.gdb", layer="BS_Tanner_Crab_dd")
+bs_king_crab <- st_read(dsn="Data/AK_Crab_Management_Areas.gdb", layer="BS_King_Crab_dd")
+
+```
 ## VIIRS
 We are currently importing viirs into AKFIN, allowing us to process indicators in the database.
 
