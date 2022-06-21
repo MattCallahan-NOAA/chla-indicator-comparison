@@ -16,6 +16,7 @@ library(lubridate)
 library(sf)
 library(httr)
 library(flextable)
+library(marmap)
 ```
 
 
@@ -163,11 +164,111 @@ LME<-Management%>%filter(Area_Type=="Ecosystem Area")%>%
 BSIERP<-Management%>%filter(Area_Type=="BSIERP Region")%>%
   dplyr::select(BSIERP_ID, BSIERP_Region_Name, Shape_Length, Shape_Area, Shape)
 #crab areas
-nbs_crab <- st_read(dsn="Data/AK_Crab_Management_Areas.gdb", layer="NBS_Crab_dd")
-bs_tanner_crab <- st_read(dsn="Data/AK_Crab_Management_Areas.gdb", layer="BS_Tanner_Crab_dd")
-bs_king_crab <- st_read(dsn="Data/AK_Crab_Management_Areas.gdb", layer="BS_King_Crab_dd")
+nbs_crab <- st_read(dsn="Data/GIS/AK_Crab_Management_Areas.gdb", layer="NBS_Crab_dd")
+bs_tanner_crab <- st_read(dsn="Data/GIS/AK_Crab_Management_Areas.gdb", layer="BS_Tanner_Crab_dd")
+bs_king_crab <- st_read(dsn="Data/GIS/AK_Crab_Management_Areas.gdb", layer="BS_King_Crab_dd")
 
 ```
+**Add spatial components to lookup table**
+```{r, eval=FALSE}
+#Turn off spherical geometry
+sf::sf_use_s2(FALSE)
+
+#point in polygon to add regional information to grid
+#convert grid to spatial object
+grid <- occ_grid%>%
+  mutate(LAT=latitude, LON=longitude)%>%
+  st_as_sf(coords = c('LON', 'LAT'), crs = 4326, agr = 'constant')
+
+#ADFG
+grid<-st_join(grid, ADFG, join = st_within)
+
+#plot
+ggplot()+
+  geom_sf(data=grid, aes(color=STAT_AREA))
+
+#limit to points with a stat area
+#brings from >1 million to <400k
+grid<-grid%>%
+  filter(STAT_AREA>0)
+
+#NMFS
+grid<-grid%>%
+  st_join(NMFS, join = st_within)
+
+#way slow. Save output 
+saveRDS(grid, "Data/OCCCI/grid_adfg_nmfs.RDS")
+
+#Ecosystem Area
+grid<-grid%>%
+  st_join(LME, join = st_within)
+saveRDS(grid, "Data/OCCCI/occ_adfg_nmfs_lme.RDS")
+
+#Ecosystem subarea
+grid<-grid%>%
+  st_join(ESR, join = st_within)
+saveRDS(grid, "Data/OCCCI/occ_adfg_nmfs_lme_esr.RDS")
+
+#BSIERP
+grid<-grid%>%
+  st_join(BSIERP, join = st_within)
+
+#NBS crab
+grid<-grid%>%
+  st_join(nbs_crab, join = st_within)
+
+#BS King crab
+grid<-grid%>%
+  st_join(bs_king_crab, join = st_within)
+
+#BS Tanner crab
+grid<-grid%>%
+  st_join(bs_tanner_crab, join = st_within)
+saveRDS(grid, "Data/OCCCI/grid_all_boundaries.RDS")
+
+#filter out all of that shape.x.1 etc fields
+grid1<-grid%>%
+  dplyr::select(latitude, longitude, STAT_AREA, WATERS_COD, NMFS_REP_AREA, Ecosystem_Area, Ecosystem_Subarea, BSIERP_ID, BSIERP_Region_Name, NBS_CRAB, BS_KING, BS_TANNER, Shape_Length.x, Shape_Area.x, geometry)
+
+```
+
+**3.4 Add depth**
+We use NOAA bathymetry from the marmap package to attribute depth to points
+```{r}
+#Also load marmap
+r.ak <- getNOAA.bathy(lon1=-180,lon2=-129,lat1=47.5,lat2=71, resolution=1)
+#Positive longitudes
+#r.ak_w <- getNOAA.bathy(lon1=167,lon2=180,lat1=47.5,lat2=71, resolution=1)
+#converting to a raster
+r.ak2 <- marmap::as.raster( r.ak)
+#r.ak3 <- marmap::as.raster( r.ak_w)
+
+#r.ak4<-raster::merge(r.ak2, r.ak3)
+
+
+#merge combined raster and remove positive depths
+grid2<-grid1%>%mutate(depth=round(raster::extract(r.ak2,cbind(longitude,latitude),method="bilinear"),0))  %>% filter(depth<=0) 
+###QA
+
+summary(grid2$depth)
+
+
+#plot
+ggplot()+
+  geom_tile(data=grid2, aes(x=longitude, y=latitude, fill=depth, color=depth))
+
+```
+
+**4) Save table as a data frame and export**
+
+```{r, eval=FALSE}
+#remove spatial geometry fields
+occ_grid<-grid2%>%data.frame()%>%dplyr::select(!c(Shape_Length.x, Shape_Area.x, geometry))
+#export
+write.csv(occ_grid, "Data/OCCCI/occ_chl_spatial_lookup.csv")
+saveRDS(occ_grid, "Data/OCCCI/occ_chl_spatial_lookup.RDS")
+```
+
 ## VIIRS
 We are currently importing viirs into AKFIN, allowing us to process indicators in the database.
 
