@@ -64,7 +64,7 @@ occ<-tidy_chl("Data/OCCCI/occci_06012021.nc")
 
 ```
 
-**Create OCC lookup table**
+**Create OCC lookup grid**
 ```{r}
 #Make lookup table similar to process for VIIRS
 
@@ -268,6 +268,34 @@ occ_grid<-grid2%>%data.frame()%>%dplyr::select(!c(Shape_Length.x, Shape_Area.x, 
 write.csv(occ_grid, "Data/OCCCI/occ_chl_spatial_lookup.csv")
 saveRDS(occ_grid, "Data/OCCCI/occ_chl_spatial_lookup.RDS")
 ```
+
+
+**Download entire time series**
+```{r}
+#change timeout option
+options(timeout=600)
+#Download two days of grid east of the dateline
+#extent 47, 70, -130, -180
+   download.file(url = "https://coastwatch.pfeg.noaa.gov/erddap/griddap/pmlEsaCCI50OceanColorDaily.nc?chlor_a%5B(2021-03-01T00:00:00Z):(2021-06-30T00:00:00Z)%5D%5B(69):(47)%5D%5B(-179.99):(-130)%5D&.draw=surface&.vars=longitude%7Clatitude%7Cchlor_a&.colorBar=%7C%7C%7C%7C%7C&.bgColor=0xffccccff", method = "libcurl", mode="wb",destfile = "Data/OCCCI/occ_2021.nc")
+
+
+
+myyear <- 1998:2021
+for(i in myyear){
+  file_name <- paste0("Data/OCCCI/occ_annual_",i,".nc")
+  download.file(url = paste0("https://coastwatch.pfeg.noaa.gov/erddap/griddap/pmlEsaCCI50OceanColorDaily.nc?chlor_a%5B(",
+                             i,"-03-01T00:00:00Z):(", i,"-07-07T00:00:00Z)%5D%5B(69):(47)%5D%5B(-179.99):(-130)%5D&.draw=surface&.vars=longitude%7Clatitude%7Cchlor_a&.colorBar=%7C%7C%7C%7C%7C&.bgColor=0xffccccff"),
+                method = "libcurl", mode="wb",destfile = file_name)
+}
+
+
+file_name <- paste0("Data/chlorophyll/chl_2020_through_07232020.nc")
+
+download.file(url = paste0("https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdMH1chla8day.nc?chlorophyll[(
+                           2020-01-05T00:00:00Z):1:(last)][(68.75):1:(46.)][(-179.9792):1:(-129)]"),
+              method = "libcurl", mode="wb",destfile = file_name)
+```
+
 
 ## VIIRS
 We are currently importing viirs into AKFIN, allowing us to process indicators in the database.
