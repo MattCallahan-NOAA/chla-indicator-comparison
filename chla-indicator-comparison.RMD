@@ -271,24 +271,40 @@ saveRDS(occ_grid, "Data/OCCCI/occ_chl_spatial_lookup.RDS")
 
 
 **Download entire time series**
+First test with one year
 ```{r}
 #change timeout option
 options(timeout=600)
-#Download two days of grid east of the dateline
+#Download 2021
 #extent 47, 70, -130, -180
    download.file(url = "https://coastwatch.pfeg.noaa.gov/erddap/griddap/pmlEsaCCI50OceanColorDaily.nc?chlor_a%5B(2021-03-01T00:00:00Z):(2021-06-30T00:00:00Z)%5D%5B(69):(47)%5D%5B(-179.99):(-130)%5D&.draw=surface&.vars=longitude%7Clatitude%7Cchlor_a&.colorBar=%7C%7C%7C%7C%7C&.bgColor=0xffccccff", method = "libcurl", mode="wb",destfile = "Data/OCCCI/occ_2021.nc")
 
+   #examine
+   occ21<-tidy_chl("Data/OCCCI/occ_2021.nc")
+ unique(occ21$date)  
+ #DOH I used daily for this whole thing. Hopefully the eight day ones are the same extent...
+ 
+ #let's try 8 day   
+  download.file(url = "https://coastwatch.pfeg.noaa.gov/erddap/griddap/pmlEsaCCI50OceanColor8Day.nc?chlor_a%5B(2021-03-01T00:00:00Z):(2021-06-30T00:00:00Z)%5D%5B(69):(47)%5D%5B(-179.99):(-130)%5D&.draw=surface&.vars=longitude%7Clatitude%7Cchlor_a&.colorBar=%7C%7C%7C%7C%7C&.bgColor=0xffccccff", method = "libcurl", mode="wb",destfile = "Data/OCCCI/occ8_2021.nc")
+ 
+  #examine
+   occ21<-tidy_chl("Data/OCCCI/occ8_2021.nc")
+ unique(occ21$date)  
+```
 
-
-myyear <- 1998:2021
+```{r}
+#download the rest of the years
+options(timeout=6000)
+#myyear <- 1998:2020
+myyear <- 2003:2020
 for(i in myyear){
-  file_name <- paste0("Data/OCCCI/occ_annual_",i,".nc")
-  download.file(url = paste0("https://coastwatch.pfeg.noaa.gov/erddap/griddap/pmlEsaCCI50OceanColorDaily.nc?chlor_a%5B(",
+  file_name <- paste0("Data/OCCCI/occ8_",i,".nc")
+  download.file(url = paste0("https://coastwatch.pfeg.noaa.gov/erddap/griddap/pmlEsaCCI50OceanColor8Day.nc?chlor_a%5B(",
                              i,"-03-01T00:00:00Z):(", i,"-07-07T00:00:00Z)%5D%5B(69):(47)%5D%5B(-179.99):(-130)%5D&.draw=surface&.vars=longitude%7Clatitude%7Cchlor_a&.colorBar=%7C%7C%7C%7C%7C&.bgColor=0xffccccff"),
                 method = "libcurl", mode="wb",destfile = file_name)
 }
 
-
+#done
 file_name <- paste0("Data/chlorophyll/chl_2020_through_07232020.nc")
 
 download.file(url = paste0("https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdMH1chla8day.nc?chlorophyll[(
