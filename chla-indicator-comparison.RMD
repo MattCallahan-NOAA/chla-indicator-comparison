@@ -289,28 +289,60 @@ options(timeout=600)
  
   #examine
    occ21<-tidy_chl("Data/OCCCI/occ8_2021.nc")
- unique(occ21$date)  
+ unique(occ21$date) 
+ 
 ```
 
+Download the rest of the years.
 ```{r}
 #download the rest of the years
 options(timeout=6000)
-#myyear <- 1998:2020
-myyear <- 2003:2020
+myyear <- 1998:2021
 for(i in myyear){
   file_name <- paste0("Data/OCCCI/occ8_",i,".nc")
   download.file(url = paste0("https://coastwatch.pfeg.noaa.gov/erddap/griddap/pmlEsaCCI50OceanColor8Day.nc?chlor_a%5B(",
                              i,"-03-01T00:00:00Z):(", i,"-07-07T00:00:00Z)%5D%5B(69):(47)%5D%5B(-179.99):(-130)%5D&.draw=surface&.vars=longitude%7Clatitude%7Cchlor_a&.colorBar=%7C%7C%7C%7C%7C&.bgColor=0xffccccff"),
                 method = "libcurl", mode="wb",destfile = file_name)
 }
-
-#done
-file_name <- paste0("Data/chlorophyll/chl_2020_through_07232020.nc")
-
-download.file(url = paste0("https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdMH1chla8day.nc?chlorophyll[(
-                           2020-01-05T00:00:00Z):1:(last)][(68.75):1:(46.)][(-179.9792):1:(-129)]"),
-              method = "libcurl", mode="wb",destfile = file_name)
 ```
+
+
+
+Convert to data frames and combine
+```{r}
+#new function that includes substr code
+tidy_chl<-function(file) {
+  tidync(file) %>% 
+  hyper_tibble()%>% 
+  mutate(date=as_datetime(time),
+         latc=as.numeric(substr(latitude, 1, 7)),
+         longc=as.numeric(substr(longitude, 1, 9)),
+         chlorophyll=round(chlor_a,3),
+         year=year(date),
+         month=month(date))%>%
+  dplyr::select(!c(latitude,longitude, time, chlor_a))
+}
+
+#pull in chl
+#create blank list
+datalist = list()
+#bring in all files with for loop
+for (i in myyear){
+  dat <- tidy_chl(paste0("Data/OCCCI/occ8_",i,".nc"))
+    datalist[[i]] <- dat 
+}
+
+#convert list to data frame
+occ <- dplyr::bind_rows(datalist)
+```
+
+**join with lookup table**
+```{r}
+occ_esp<-occ%>%
+  inner_join(occ_grid, by=c("longc"="longitude", "latc"="latitude"))
+saveRDS(occ_esp, "Data/OCCCI/occ8_esp_strata.RDS")
+```
+
 
 
 ## VIIRS
