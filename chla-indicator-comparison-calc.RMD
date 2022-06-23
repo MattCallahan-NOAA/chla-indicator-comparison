@@ -1,0 +1,258 @@
+---
+title: "chl-indicator-comparison-calculations"
+author: "Matt Callahan"
+date: "6/23/2022"
+output: html_document
+---
+
+The actual calculations of the ESP indicators are performed here. First we will recalculate previously submitted indicators with MODIS data to ensure that we are using the correct processes. Then we will apply the same code to the OC-CCI data. We will compare indicators visually by plotting indicator values over time and against each other, and statistically with simple linear models.
+## Load data
+From chla-indicator-comparison-data.Rmd
+
+**MODIS**
+MODIS data were downloaded from a google folder where Jordan stored them from previous efforts https://drive.google.com/drive/u/1/folders/1mhwQ70mjLrkiQYiQ2oNHx08Q7IlL8Q3-
+
+```{r}
+#EBS
+mod_ebs<-readRDS("Data/MODIS/merged_8day_2003_2021_EBS.RDS")
+#GOA
+mod_goa<-readRDS("Data/MODIS/merged_8day_2003_2021_GOA.RDS")
+```
+
+**Load oc-cci**
+```{r}
+occci_esp<-readRDS("Data/OCCCI/occ8_esp_strata.RDS")
+```
+
+
+## ESP indicators
+These indicators were requested by stock assessment authors. Each indicator is a single value for each year.
+
+**Previous ESP Indicator descriptions**
+```{r}
+#check which indicators were used
+ind <- httr::content(httr::GET("https://apex.psmfc.org/akfin/data_marts/akmp/esp_indicators?"),
+                      type = "application/json"
+) %>%
+  dplyr::bind_rows()
+
+ind<-ind%>%filter(grepl('Chlorophylla', INDICATOR_NAME))
+
+#all ours?
+unique(ind$CONTACT) #yes
+
+#Descriptions
+ind%>%group_by(INDICATOR_NAME)%>%
+  summarise(descritption=unique(PRODUCT_DESCRIPTION),
+            submission_year=unique(SUBMISSION_YEAR))%>%
+   flextable()%>%
+  theme_box()
+
+```
+
+**functions**
+Create functions for 
+
+-comparing MODIS indicators with previous indicators
+-joining MODIS and OC indicators
+-plotting MODIS and OC indicators over time
+-plotting MODIS and OC against each other 
+
+```{r}
+#Calculation will differ for each indicator so probably not worth functionalizing that. 
+
+#Compare MODIS with previous indicator
+#indicator is the INDICATOR_NAME in the ind object
+#x is the data frame with the new MODIS indicator
+pull_ind<-function(indicator, x) {
+  ind%>%filter(INDICATOR_NAME==indicator)%>%
+  dplyr::select(YEAR, DATA_VALUE)%>%
+  left_join(x, by="YEAR")%>%
+  mutate(diff=round(DATA_VALUE-MODIS_VALUE))%>%
+    print()
+}
+#sum of differences
+sumdiff<-function(x) {
+  sum(x$diff)
+}
+
+#join
+chla_join<-function(oc,mod) {
+  occci%>% left_join(mod, by=c("year"="YEAR"))
+}
+
+#plot over time
+chla_timeplot<-function(x, indicator) {
+  x%>%
+  ggplot()+
+  geom_line(aes(x=year,y=OCCCI_VALUE), color="red")+
+  geom_line(aes(x=year,y=MODIS_VALUE), color="blue")+
+  ylab("chla")+
+  ggtitle(paste(indicator, " OC-CCI=red, MODIS=blue"))
+}
+
+#equation functions
+lm_eqn <- function(df){
+    m <- lm(OCCCI_VALUE ~ MODIS_VALUE, df);
+    eq <- substitute(italic(y) == a + b %.% italic(x)*","~~italic(r)^2~"="~r2, 
+         list(a = format(unname(coef(m)[1]), digits = 2),
+              b = format(unname(coef(m)[2]), digits = 2),
+             r2 = format(summary(m)$r.squared, digits = 3)))
+    as.character(as.expression(eq));
+}
+
+chla_reg_plot<-function(df, indicator){
+  ggplot(data=df, aes(x=MODIS_VALUE, y=OCCCI_VALUE, label=year))+
+    geom_point()+
+    geom_text()+
+    geom_smooth(method="lm")+
+    annotate(geom='text', label = lm_eqn(df), parse = TRUE, x=-Inf, y=Inf, hjust=0, vjust=1)+
+    ggtitle(indicator)+
+    geom_abline(slope=1, intercept=0, lty=2)
+    
+}
+
+```
+
+**AMJ_Chlorophylla_Biomass_SEBS_Satellite**
+
+
+```{r}
+#define indicator
+indicator<-"AMJ_Chlorophylla_Biomass_SEBS_Satellite"
+#MODIS
+#recalculate indicator
+mod_AMJ_SEBS <- mod_ebs %>%
+  mutate(month=month(date),
+         YEAR=year(date)) %>%
+  filter(bsierp_name== "North middle shelf" & month%in%c(4:6)) %>%
+  group_by(YEAR) %>%
+  summarise(MODIS_VALUE=mean(chlorophyll,na.rm=TRUE))
+
+#join with previous indicator and compare
+temp<-pull_ind(indicator, mod_smbkc)
+#Values different. Follow up with Jens
+
+####NOT RUN####
+sumdiff(temp)
+
+#OC-cci
+occci_smbkc<-occ_esp%>%
+  filter(BS_KING=="StMattBKC" & month%in%c(4:6))%>%
+   group_by(year) %>%
+  summarise(OCCCI_VALUE=mean(chlorophyll,na.rm=TRUE))
+
+#join
+smbkc_chla<-chla_join(occci_smbkc, mod_smbkc)
+
+#plot
+#timeseries
+chla_timeplot(smbkc_chla, indicator)
+
+#regression
+fit<-lm_eqn(smbkc_chla)
+chla_reg_plot(smbkc_chla, indicator)
+```
+
+
+**Spring_Chlorophylla_Biomass_EGOA_Satellite**
+```{r}
+#define indicator
+indicator<-"Spring_Chlorophylla_Biomass_EGOA_Satellite"
+#MODIS
+#recalculate indicator
+mod_SPR_EGOA_B <- mod_goa %>%
+  mutate(month=month(date),
+         YEAR=year(date)) %>%
+  filter(nmfsarea %in% c(640,650) & month==5 & depth<(-10) & depth>(-200)) %>%
+  group_by(YEAR) %>%
+  summarise(MODIS_VALUE=mean(chlorophyll,na.rm=TRUE))
+
+#join with previous indicator and compare
+temp<-pull_ind(indicator, mod_SPR_EGOA_B)
+sumdiff(temp)
+
+#Curious that this matches exactly when the indicator description says it uses oc-cci
+
+#OCC
+occci_SPR_EGOA_B<-occ_esp%>%
+  filter(NMFS_REP_AREA%in% c(640, 650) & month==5 & depth<(-10) & depth>(-200))%>%
+   group_by(year) %>%
+  summarise(OCCCI_VALUE=mean(chlorophyll,na.rm=TRUE))
+
+#compare this to indicator
+ind%>%filter(INDICATOR_NAME==indicator)%>%
+  dplyr::select(YEAR, DATA_VALUE)%>%
+  left_join(occci_SPR_EGOA_B, by=c("YEAR"="year"))%>%
+  mutate(diff=round(DATA_VALUE-OCCCI_VALUE))%>%
+    print()
+#Nope...
+
+#join
+SPR_EGOA_B_chla<-chla_join(occci_SPR_EGOA_B, mod_SPR_EGOA_B)
+
+#plot
+#timeseries
+chla_timeplot(SPR_EGOA_B_chla, indicator)
+
+#regression
+fit<-lm_eqn(SPR_EGOA_B_chla)
+chla_reg_plot(SPR_EGOA_B_chla, indicator)
+
+
+```
+
+**Spring_Chlorophylla_Biomass_SEBS_Inner_Shelf_Satellite**
+
+
+**Spring_Chlorophylla_Biomass_SEBS_Satellite**
+
+**Spring_Chlorophylla_Biomass_SMBKC_Satellite**
+Calculations from https://github.com/jordanwatson/ESP_Indicators/blob/main/ESP_Chlorophyll_Crab.R
+
+```{r}
+#define indicator
+indicator<-"Spring_Chlorophylla_Biomass_SMBKC_Satellite"
+#MODIS
+#recalculate indicator
+mod_smbkc <- mod_ebs %>%
+  mutate(month=month(date),
+         YEAR=year(date)) %>%
+  filter(crab=="StMatts" & month%in%c(4:6)) %>%
+  group_by(YEAR) %>%
+  summarise(MODIS_VALUE=mean(chlorophyll,na.rm=TRUE))
+
+#join with previous indicator and compare
+temp<-pull_ind(indicator, mod_smbkc)
+sumdiff(temp)
+
+#OCcci
+occci_smbkc<-occ_esp%>%
+  filter(BS_KING=="StMattBKC" & month%in%c(4:6))%>%
+   group_by(year) %>%
+  summarise(OCCCI_VALUE=mean(chlorophyll,na.rm=TRUE))
+
+#join
+smbkc_chla<-chla_join(occci_smbkc, mod_smbkc)
+
+#plot
+#timeseries
+chla_timeplot(smbkc_chla, indicator)
+
+#regression
+fit<-lm_eqn(smbkc_chla)
+chla_reg_plot(smbkc_chla, indicator)
+```
+
+**Spring_Chlorophylla_Biomass_WCGOA_Satellite**
+
+**Spring_Chlorophylla_Peak_EGOA_Satellite**
+
+**Spring_Chlorophylla_Peak_SEBS_Satellite**
+
+**Spring_Chlorophylla_Peak_WCGOA_Satellite**
+
+**Recalculate ESP indices**
+```{r}
+
+```
