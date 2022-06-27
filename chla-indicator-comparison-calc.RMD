@@ -13,13 +13,11 @@ We will also explore ESR chlorophyll indicators, starting with the Southeastern 
 ## Load data
 
 ```{r, warning=FALSE, message=FALSE}
-library(tidync)
 library(tidyverse)
 library(lubridate)
 library(sf)
 library(httr)
 library(flextable)
-library(marmap)
 ```
 
 **MODIS**
@@ -92,7 +90,7 @@ sumdiff<-function(x) {
 
 #join
 chla_join<-function(oc,mod) {
-  occci%>% left_join(mod, by=c("year"="YEAR"))
+  oc%>% left_join(mod, by=c("year"="YEAR"))
 }
 
 #plot over time
