@@ -361,7 +361,7 @@ ggplot()+
 
 #save files for Jens
 #saveRDS(mod_esr, "Data/MODIS/modis_south_middle_shelf.RDS")
-#saveRDS(mod_esr, "Data/OCCCI/occci_south_middle_shelf.RDS") 
+#saveRDS(occci_esr, "Data/OCCCI/occci_south_middle_shelf.RDS") 
 #and grouped by stat areas
 
 #MODIS
