@@ -62,12 +62,15 @@ ind%>%group_by(INDICATOR_NAME)%>%
 
 ```
 
-**functions**
+**Functions**
 Create functions for 
 
 -comparing MODIS indicators with previous indicators
+
 -joining MODIS and OC indicators
+
 -plotting MODIS and OC indicators over time
+
 -plotting MODIS and OC against each other 
 
 ```{r}
@@ -89,8 +92,8 @@ sumdiff<-function(x) {
 }
 
 #join
-chla_join<-function(oc,mod) {
-  oc%>% left_join(mod, by=c("year"="YEAR"))
+chla_join<-function(occci,mod) {
+  occci%>% left_join(mod, by=c("year"="YEAR"))
 }
 
 #plot over time
@@ -128,7 +131,7 @@ chla_reg_plot<-function(df, indicator){
 
 **AMJ_Chlorophylla_Biomass_SEBS_Satellite**
 
-```{r}
+```{r, warning=FALSE, message=FALSE}
 #define indicator
 indicator<-"AMJ_Chlorophylla_Biomass_SEBS_Satellite"
 #MODIS
@@ -148,7 +151,7 @@ temp<-pull_ind(indicator, mod_AMJ_SEBS)
 
 
 **Spring_Chlorophylla_Biomass_EGOA_Satellite**
-```{r}
+```{r, warning=FALSE, message=FALSE}
 #define indicator
 indicator<-"Spring_Chlorophylla_Biomass_EGOA_Satellite"
 #MODIS
@@ -172,14 +175,6 @@ occci_SPR_EGOA_B<-occ_esp%>%
    group_by(year) %>%
   summarise(OCCCI_VALUE=mean(chlorophyll,na.rm=TRUE))
 
-#compare this to indicator
-ind%>%filter(INDICATOR_NAME==indicator)%>%
-  dplyr::select(YEAR, DATA_VALUE)%>%
-  left_join(occci_SPR_EGOA_B, by=c("YEAR"="year"))%>%
-  mutate(diff=round(DATA_VALUE-OCCCI_VALUE))%>%
-    print()
-#Nope...
-
 #join
 SPR_EGOA_B_chla<-chla_join(occci_SPR_EGOA_B, mod_SPR_EGOA_B)
 
@@ -195,7 +190,7 @@ chla_reg_plot(SPR_EGOA_B_chla, indicator)
 ```
 
 **Spring_Chlorophylla_Biomass_SEBS_Inner_Shelf_Satellite**
-```{r}
+```{r, warning=FALSE, message=FALSE}
 #define indicator
 indicator<-"Spring_Chlorophylla_Biomass_SEBS_Inner_Shelf_Satellite"
 #MODIS
@@ -230,7 +225,7 @@ chla_reg_plot(BB_chla, indicator)
 ```
 
 **Spring_Chlorophylla_Biomass_SEBS_Satellite**
-```{r}
+```{r, warning=FALSE, message=FALSE}
 #define indicator
 indicator<-"Spring_Chlorophylla_Biomass_SEBS_Satellite"
 #MODIS
@@ -255,7 +250,7 @@ temp<-pull_ind(indicator, mod_SEBS5)
 **Spring_Chlorophylla_Biomass_SMBKC_Satellite**
 Calculations from https://github.com/jordanwatson/ESP_Indicators/blob/main/ESP_Chlorophyll_Crab.R
 
-```{r}
+```{r, warning=FALSE, message=FALSE}
 #define indicator
 indicator<-"Spring_Chlorophylla_Biomass_SMBKC_Satellite"
 #MODIS
@@ -291,7 +286,7 @@ chla_reg_plot(smbkc_chla, indicator)
 
 **Spring_Chlorophylla_Biomass_WCGOA_Satellite**
 
-```{r}
+```{r, warning=FALSE, message=FALSE}
 #define indicator
 indicator<-"Spring_Chlorophylla_Biomass_WCGOA_Satellite"
 #MODIS
@@ -336,9 +331,9 @@ chla_reg_plot(SPR_WCGOA_B_chla, indicator)
 
 **Spring_Chlorophylla_Peak_WCGOA_Satellite**
 
-**Recalculate ESR indices**
-This is just a first draft. The calculation includes BSIERP South Middle shelf, Alaska Peninsula, Pribilofs, and Central Middle Shelf. 
-```{r}
+## Recalculate ESR indices 
+This is just a first draft. The spatial extent includes BSIERP South Middle shelf, Alaska Peninsula, Pribilofs, and Central Middle Shelf in June and July. The plot below just uses simple aggregation rather than grouping by stat area. 
+```{r, warning=FALSE, message=FALSE}
 #Select SEBS shelf BS regions
 #MODIS
 mod_esr<-mod_ebs%>%
@@ -368,6 +363,7 @@ ggplot()+
 #saveRDS(mod_esr, "Data/MODIS/modis_south_middle_shelf.RDS")
 #saveRDS(mod_esr, "Data/OCCCI/occci_south_middle_shelf.RDS") 
 #and grouped by stat areas
+
 #MODIS
 #mod_ebs%>%
 #  mutate(month=month(date),
@@ -377,7 +373,7 @@ ggplot()+
 #  summarise(MODIS_VALUE=round(mean(chlorophyll, na.rm=T),2))%>%
 #  saveRDS("Data/MODIS/MODIS_SEBS_shelf_stat_esr.RDS")
 #OC-CCI
-#MODIS
+
 #occ_esp%>%
 #  filter(BSIERP_ID %in% c(1,3,5,6) & month %in% c(4,5,6))%>%
 #  group_by(year, date, STAT_AREA)%>%
