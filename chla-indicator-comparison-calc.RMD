@@ -186,6 +186,36 @@ chla_timeplot(SPR_EGOA_B_chla, indicator)
 fit<-lm_eqn(SPR_EGOA_B_chla)
 chla_reg_plot(SPR_EGOA_B_chla, indicator)
 
+####try to reduce MODIS values by deepening the shallow end of the depth filter.
+mod_SPR_EGOA_B <- mod_goa %>%
+  mutate(month=month(date),
+         YEAR=year(date)) %>%
+  filter(nmfsarea %in% c(640,650) & month %in% c(4:6) & depth<(-50) & depth>(-200)) %>%
+  group_by(YEAR) %>%
+  summarise(MODIS_VALUE=mean(chlorophyll,na.rm=TRUE))
+
+#join with previous indicator and compare
+temp<-pull_ind(indicator, mod_SPR_EGOA_B)
+sumdiff(temp)
+
+#Curious that this matches exactly when the indicator description says it uses oc-cci
+
+#OCC
+occci_SPR_EGOA_B<-occ_esp%>%
+  filter(NMFS_REP_AREA%in% c(640, 650) & month %in% c(4:6) & depth<(-50) & depth>(-200))%>%
+   group_by(year) %>%
+  summarise(OCCCI_VALUE=mean(chlorophyll,na.rm=TRUE))
+
+#join
+SPR_EGOA_B_chla<-chla_join(occci_SPR_EGOA_B, mod_SPR_EGOA_B)
+
+#plot
+#timeseries
+chla_timeplot(SPR_EGOA_B_chla, indicator)
+
+#regression
+fit<-lm_eqn(SPR_EGOA_B_chla)
+chla_reg_plot(SPR_EGOA_B_chla, indicator)
 
 ```
 
@@ -209,6 +239,34 @@ sumdiff(temp)
 #OCcci
 occci_BB<-occ_esp%>%
   filter(BS_KING=="BBRKC" & month%in%c(4:6))%>%
+   group_by(year) %>%
+  summarise(OCCCI_VALUE=mean(chlorophyll,na.rm=TRUE))
+
+#join
+BB_chla<-chla_join(occci_BB, mod_BB)
+
+#plot
+#timeseries
+chla_timeplot(BB_chla, indicator)
+
+#regression
+fit<-lm_eqn(BB_chla)
+chla_reg_plot(BB_chla, indicator)
+
+####recalculate with deeper maximum depth
+#recalculate indicator
+mod_BB <- mod_ebs %>%
+  mutate(month=month(date),
+         YEAR=year(date)) %>%
+  filter(crab=="BristolBay" & 
+           month%in%c(4:6) &
+           depth<(-30)) %>%
+  group_by(YEAR) %>%
+  summarise(MODIS_VALUE=mean(chlorophyll,na.rm=TRUE))
+
+#OCcci
+occci_BB<-occ_esp%>%
+  filter(BS_KING=="BBRKC" & month%in%c(4:6) & depth<(-30))%>%
    group_by(year) %>%
   summarise(OCCCI_VALUE=mean(chlorophyll,na.rm=TRUE))
 
@@ -340,14 +398,13 @@ mod_esr<-mod_ebs%>%
   mutate(month=month(date),
          YEAR=year(date),
          doy=yday(date)) %>%
-  filter(bsierp_id %in% c(1,3,5,6) & month %in% c(4,5,6))%>%
+  filter(bsierp_id %in% c(1,3,5,6) & month %in% c(4,5,6) & depth <(-30) & depth>(-200))%>%
   group_by(YEAR, doy)%>%
   summarise(MODIS_VALUE=round(mean(chlorophyll, na.rm=T),2))
 
 #oc-cci
-#MODIS
 occci_esr<-occ_esp%>%
-  filter(BSIERP_ID %in% c(1,3,5,6) & month %in% c(4,5,6))%>%
+  filter(BSIERP_ID %in% c(1,3,5,6) & month %in% c(4,5,6) & depth <(-30) & depth>(-200))%>%
   mutate(doy=yday(date),
          YEAR=year) %>%
   group_by(YEAR, doy)%>%
@@ -358,6 +415,56 @@ ggplot()+
   geom_line(data=occci_esr, aes(x=doy, y=OCCCI_VALUE), color="red")+
   geom_line(data=mod_esr, aes(x=doy, y=MODIS_VALUE), color="blue")+
   facet_wrap(~YEAR, ncol=4)
+
+#plot in aggregate
+#MODIS
+mod_esr_df<-mod_ebs%>%
+  mutate(month=month(date),
+         YEAR=year(date),
+         #doy=yday(date)
+         ) %>%
+  filter(bsierp_id %in% c(1,3,5,6) & month %in% c(4,5,6) & depth <(-50) & depth>(-200) & statefed == "FED"
+         )%>%
+  group_by(YEAR)%>%
+  summarise(MODIS_VALUE=round(mean(chlorophyll, na.rm=T),2))
+
+mod_esr_ndf<-mod_ebs%>%
+  mutate(month=month(date),
+         YEAR=year(date),
+         #doy=yday(date)
+         ) %>%
+  filter(bsierp_id %in% c(1,3,5,6) & month %in% c(4,5,6) #& depth <(-50) & depth>(-200)
+         )%>%
+  group_by(YEAR)%>%
+  summarise(MODIS_VALUE=round(mean(chlorophyll, na.rm=T),2))
+
+#oc-cci
+occci_esr_ndf<-occ_esp%>%
+  filter(BSIERP_ID %in% c(1,3,5,6) & month %in% c(4,5,6) #& depth <(-50) & depth>(-200)
+         )%>%
+  mutate(#doy=yday(date),
+         YEAR=year) %>%
+  group_by(YEAR)%>%
+  summarise(OCCCI_VALUE=round(mean(chlorophyll, na.rm=T),2))
+
+occci_esr_df<-occ_esp%>%
+  filter(BSIERP_ID %in% c(1,3,5,6) & month %in% c(4,5,6) & depth <(-50) & depth>(-200) & WATERS_COD== "FED"
+         )%>%
+  mutate(#doy=yday(date),
+         YEAR=year) %>%
+  group_by(YEAR)%>%
+  summarise(OCCCI_VALUE=round(mean(chlorophyll, na.rm=T),2))
+
+
+ggplot()+
+  geom_line(data=occci_esr_df, aes(x=YEAR, y=OCCCI_VALUE), color="red")+
+  geom_line(data=occci_esr_ndf, aes(x=YEAR, y=OCCCI_VALUE), color="red", lty=2)+
+  geom_line(data=mod_esr_df, aes(x=YEAR, y=MODIS_VALUE), color="blue")+
+    geom_line(data=mod_esr_ndf, aes(x=YEAR, y=MODIS_VALUE), color="blue",lty=2)+
+  ylim(c(0,7))
+
+ ggplot()+
+  geom_histogram(data=mod_ebs %>% filter(bsierp_id %in% c(1,3,5,6) ), aes(x=depth))
 
 #save files for Jens
 #saveRDS(mod_esr, "Data/MODIS/modis_south_middle_shelf.RDS")
