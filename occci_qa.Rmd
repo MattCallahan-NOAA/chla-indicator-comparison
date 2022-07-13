@@ -1,0 +1,136 @@
+---
+title: "OC-CCI QA"
+author: "Matt Callahan"
+date: "7/12/2022"
+output: html_document
+---
+
+## Overview
+Here I do a few QA tests on the OC-CCI data to ensure that our data pull process has correctly extracted data. 
+
+## Test point in polygon
+I will pick a region (we'll do NMFS 516) and redo the point in polygon operation for two years (2020 and 2010) and compare record counts and results to those from our lookup table. 
+
+**point in polygon**
+We will use the same process in sf that was used to create the lookup table.
+```{r, warning=FALSE, message=FALSE}
+#install packages
+library(tidyverse)
+library(lubridate)
+library(sf)
+library(AKmarineareas)
+library(tidync)
+```
+
+```{r}
+#import 2020 and 2010 data from oc-cci processed file 
+occci_lkp<-readRDS("Data/OCCCI/occ8_esp_strata.RDS")%>%filter(year %in% c(2010, 2020) & NMFS_REP_AREA == 516)
+
+#bring in NMFS area
+nmfs<-AK_marine_area()%>%filter(NMFS_REP_AREA == "516")%>%
+  dplyr::select(NMFS_REP_AREA)
+
+#bring in unprocessed data from netcdfs
+#tidync function
+tidy_chl<-function(file) {
+  tidync(file) %>% 
+  hyper_tibble()%>% 
+  mutate(date=as_datetime(time),
+         chlorophyll=round(chlor_a,3),
+         year=year(date),
+         month=month(date))%>%
+  dplyr::select(!c(time, chlor_a))
+}
+
+occci_2010<-tidy_chl("Data/OCCCI/occ8_2010.nc")
+occci_2020<-tidy_chl("Data/OCCCI/occ8_2020.nc")
+
+
+
+#convert occci to spatial object
+occci_2010<-occci_2010%>%
+  st_as_sf(coords = c('longitude', 'latitude'), crs = 4326, agr = 'constant')
+occci_2020<-occci_2020%>%
+  st_as_sf(coords = c('longitude', 'latitude'), crs = 4326, agr = 'constant')
+
+#join
+occci_2010<-occci_2010%>%
+  st_join(nmfs, join = st_within)%>%
+  filter(NMFS_REP_AREA == "516")
+
+occci_2020<-occci_2020%>%
+  st_join(nmfs, join = st_within)%>%
+  filter(NMFS_REP_AREA == "516")
+
+#compare record counts
+nrow(occci_2010)-nrow(occci_lkp%>%filter(year==2010))
+nrow(occci_2020)-nrow(occci_lkp%>%filter(year==2020))
+#close... why not exact?
+
+#plot
+ggplot()+
+  geom_sf(data=nmfs, fill=NA)+
+  geom_sf(data=occci_2010, color="red")+
+  geom_point(data=occci_lkp%>%filter(year==2010), aes(x=longc, y=latc), color="black")
+#why are those points there in 2010 but not 2020???
+ggplot()+
+  geom_sf(data=nmfs, fill=NA)+
+  geom_sf(data=occci_2010, color="red")+
+  geom_point(data=occci_lkp%>%filter(year==2010), aes(x=longc, y=latc), color="black")+
+  ylim(c(55,56))
+#plot for 2020
+ggplot()+
+  geom_sf(data=nmfs, fill=NA)+
+  geom_sf(data=occci_2020, color="red")+
+  geom_point(data=occci_lkp%>%filter(year==2020), aes(x=longc, y=latc), color="black")+
+  ylim(c(55,56))
+```
+
+Bring in depth da
+```{r}
+
+#maybe they're really close to land and we cut them out...?
+ggplot()+
+  geom_sf(data=nmfs, fill=NA)+
+  geom_sf(data=occci_2010, aes(color=ifelse(depth>0, "red", "green")))+
+  #geom_point(data=occci_lkp%>%filter(year==2010), aes(x=longc, y=latc), color="black")+
+  ylim(c(55,56))
+
+```
+
+## Spherical geometry
+I've had to turn off spherical geometry (for some reason) to do point in polygon operations in the past. I will rerun the point in polygon to make sure that it doesn't alter the results.
+
+```{r}
+#if it an issue with spherical geometry?
+#unneccessary but comforting
+#Turn off spherical geometry
+
+sf::sf_use_s2(FALSE)
+
+#reload
+occci_2010_nsg<-tidy_chl("Data/OCCCI/occ8_2010.nc")
+occci_2020_nsg<-tidy_chl("Data/OCCCI/occ8_2020.nc")
+
+#convert occci to spatial object
+occci_2010_nsg<-occci_2010_nsg%>%
+  st_as_sf(coords = c('longitude', 'latitude'), crs = 4326, agr = 'constant')
+occci_2020_nsg<-occci_2020_nsg%>%
+  st_as_sf(coords = c('longitude', 'latitude'), crs = 4326, agr = 'constant')
+
+occci_2010_nsg<-occci_2010_nsg%>%
+  st_join(nmfs, join = st_within)%>%
+  filter(NMFS_REP_AREA == "516")
+
+occci_2020_nsg<-occci_2020_nsg%>%
+  st_join(nmfs, join = st_within)%>%
+  filter(NMFS_REP_AREA == "516")
+
+#compare record counts
+sum(nrow(occci_2010_nsg), nrow(occci_2020_nsg))-nrow(occci_lkp)
+nrow(occci_2010)-nrow(occci_2010)
+nrow(occci_2020)-nrow(occci_2020)
+#That wasn't the issue (phew!!!)
+
+```
+
