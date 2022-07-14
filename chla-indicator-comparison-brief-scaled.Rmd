@@ -5,52 +5,49 @@ date: "6/23/2022"
 output: html_document
 ---
 
-The following document compares MODIS and OC_CCI chlorophyll values in the SEBS, EGOA, and WGOA. Within each region/product, I compare filtered -50 to -200 Federal waters only with unfiltered (SEBS) or -10 to -200m (GOA) values.
+## Compare chlorophyll product
 
-## Load data
+For each region I compare chlorophyll value (raw and scaled), the effects of depth filters(MODIS and OC-CCI only), and record counts between chlorophyll products.
+
+
+**Create function for joining and plotting MODIS and OC indicators over time**
 
 ```{r, warning=FALSE, message=FALSE}
 library(tidyverse)
 library(lubridate)
 library(sf)
 library(AKmarineareas)
-```
 
-**MODIS**
-MODIS data were downloaded from a google folder where Jordan stored them from previous efforts https://drive.google.com/drive/u/1/folders/1mhwQ70mjLrkiQYiQ2oNHx08Q7IlL8Q3-
 
-```{r}
-#EBS
-mod_ebs<-readRDS("Data/MODIS/merged_8day_2003_2021_EBS.RDS")
-#GOA
-mod_goa<-readRDS("Data/MODIS/merged_8day_2003_2021_GOA.RDS")
-```
-
-**Load oc-cci**
-This took a couple hundred lines of codes to make, found in chla-indicator-comparison-data.Rmd
-
-```{r}
-occ_esp<-readRDS("Data/OCCCI/occ8_esp_strata.RDS")
-```
-
-**Create function for joining and plotting MODIS and OC indicators over time**
-
-```{r, warning=FALSE, message=FALSE}
-#scale0-1
+#scale values
 range01 <- function(x){(x-min(x, na.rm=T))/(max(x, na.rm=T)-min(x, na.rm=T))}
 
-#join
-chla_join<-function(w,x,y,z){
+#join aggregated products
+chla_join<-function(w,x,y,z, aa){
   w%>%left_join(x, by=c("YEAR"="YEAR"))%>%
     left_join(y, by=c("YEAR"="YEAR"))%>%
     left_join(z, by=c("YEAR"="YEAR"))%>%
+    left_join(aa, by=c("YEAR"="YEAR"))%>%
     mutate(#OCCCI_S=scale(OCCCI_VALUE_NF, center=FALSE, scale=FALSE),
            #MODIS_S=scale(MODIS_VALUE_NF, center=FALSE, scale=FALSE),
            OCCCI_S=range01(OCCCI_VALUE_NF),
-           MODIS_S=range01(MODIS_VALUE_NF))
+           MODIS_S=range01(MODIS_VALUE_NF),
+           VIIRS_S=range01(VIIRS_VALUE))
 }
-#raw time series
+
+#time series of the three products
 chla_timeplot<-function(x, indicator) {
+  ggplot()+
+  geom_line(data=x, aes(x=YEAR,y=OCCCI_VALUE_NF), color="red")+
+  geom_line(data=x, aes(x=YEAR,y=MODIS_VALUE_NF), color="blue")+
+  geom_line(data=x, aes(x=YEAR,y=VIIRS_VALUE), color="green")+
+  ylab("chla")+
+    ylim(c(0,5))+
+  ggtitle(paste(indicator, "\n OC-CCI=red, MODIS=blue, VIIRS=green"))
+}
+
+#time series with depth filters and no depth filters
+chla_timeplot_depth<-function(x, indicator) {
   ggplot()+
   geom_line(data=x, aes(x=YEAR,y=OCCCI_VALUE_NF), color="red")+
   geom_line(data=x, aes(x=YEAR,y=OCCCI_VALUE_F), color="red", lty=2)+
@@ -67,19 +64,50 @@ chla_scale<-function(x, indicator) {
   geom_line(data=x, aes(x=YEAR,y=OCCCI_S), color="red")+
 
   geom_line(data=x, aes(x=YEAR,y=MODIS_S), color="blue")+
-
+ geom_line(data=x, aes(x=YEAR,y=VIIRS_S), color="green")+
   ylab("scaled chla")+
   ggtitle(paste(indicator, " OC-CCI=red, MODIS=blue"))
 }
 
+#count plot
+count_plot<-function(x, indicator) {
+  ggplot()+
+      geom_col(data=x, aes(x=YEAR,y=VIIRS_N), fill="green")+
+  geom_col(data=x, aes(x=YEAR,y=OCCCI_N), fill="red")+
+  geom_col(data=x, aes(x=YEAR,y=MODIS_N), fill="blue")+
+
+  ylab("scaled chla")+
+  ggtitle(paste(indicator, " OC-CCI=red, MODIS=blue, VIIRS=green"))
+}
+
+
 ```
 
-## 3 
-
-**SEBS**
+## SEBS
 I first look at the BSIERP "super region" consisting of the South Middle shelf, Alaska Peninsula, Pribilofs, and Central Middle Shelf regions.
 
 ![selected BSEIRP regions](bsierp_sebs_map.png)
+
+**load data**
+*modis*
+MODIS data were downloaded from a google folder where Jordan stored them from previous efforts https://drive.google.com/drive/u/1/folders/1mhwQ70mjLrkiQYiQ2oNHx08Q7IlL8Q3-
+
+*oc-cci*
+This took a couple hundred lines of codes to make, found in chla-indicator-comparison-data.Rmd
+
+*viirs*
+in chla-indicator-comparison-data.Rmd
+Lookup table code on sharefile Personal folders>projects>chlorophyll... 
+```{r}
+#MODIS
+mod_ebs<-readRDS("Data/MODIS/merged_8day_2003_2021_EBS.RDS")
+
+occ_ebs<-readRDS("Data/OCCCI/occ8_strata_ebs.RDS")
+
+viirs<-readRDS("Data/VIIRS/viirs_strata.RDS")
+```
+
+**Run**
 
 ```{r, warning=FALSE, message=FALSE}
 #define indicator
@@ -103,11 +131,12 @@ mod_esr_ndf<-mod_ebs%>%
   filter(bsierp_id %in% c(1,3,5,6) & month %in% c(4,5,6) #& depth <(-50) & depth>(-200)
          )%>%
   group_by(YEAR)%>%
-  summarise(MODIS_VALUE_NF=round(mean(chlorophyll, na.rm=T),2))
+  summarise(MODIS_VALUE_NF=round(mean(chlorophyll, na.rm=T),2),
+            MODIS_N=n())
 
 
 #oc-cci depth filter
-occci_esr_df<-occ_esp%>%
+occci_esr_df<-occ_ebs%>%
   filter(BSIERP_ID %in% c(1,3,5,6) & month %in% c(4,5,6) & depth <(-50) & depth>(-200) & WATERS_COD== "FED"
          )%>%
   mutate(YEAR=year) %>%
@@ -115,35 +144,63 @@ occci_esr_df<-occ_esp%>%
   summarise(OCCCI_VALUE_F=round(mean(chlorophyll, na.rm=T),2))
 
 #oc-cci no depth filter
-occci_esr_ndf<-occ_esp%>%
+occci_esr_ndf<-occ_ebs%>%
   filter(BSIERP_ID %in% c(1,3,5,6) & month %in% c(4,5,6) #& depth <(-50) & depth>(-200)
          )%>%
   mutate(YEAR=year) %>%
   group_by(YEAR)%>%
-  summarise(OCCCI_VALUE_NF=round(mean(chlorophyll, na.rm=T),2))
+  summarise(OCCCI_VALUE_NF=round(mean(chlorophyll, na.rm=T),2),
+            OCCCI_N=n())
 
-bsierp<-chla_join(occci_esr_ndf, occci_esr_df, mod_esr_ndf, mod_esr_df)
+#viirs
+#oc-cci no depth filter
+viirs_bsierp<-viirs%>%
+  filter(BSIERP_ID %in% c(1,3,5,6) & month %in% c(4,5,6) #& depth <(-50) & depth>(-200)
+         )%>%
+  mutate(YEAR=year) %>%
+  group_by(YEAR)%>%
+  summarise(VIIRS_VALUE=round(mean(chlorophyll, na.rm=T),2),
+            VIIRS_N=n())
 
-#plot
+#join
+bsierp<-chla_join(occci_esr_ndf, occci_esr_df, mod_esr_ndf, mod_esr_df, viirs_bsierp)
+
+#plot timeseries
 chla_timeplot(bsierp, indicator)
 
+#plot depth filter differences
+#plot timeseries
+chla_timeplot_depth(bsierp, indicator)
+
 #how much was filtered out?
-mod_ebs%>%
-  mutate(month=month(date) ) %>%
-  filter(bsierp_id %in% c(1,3,5,6) & month %in% c(4,5,6))%>%
-    summarise(no_filter=n())%>%
-  bind_cols(mod_ebs %>%
-              mutate(month=month(date) ) %>%
-  filter(bsierp_id %in% c(1,3,5,6) & month %in% c(4,5,6) & depth <(-50) & depth>(-200) & statefed == "FED")%>%
-  summarise(depth_filter=n())) %>% 
-  mutate(percent_remaining=depth_filter/no_filter*100)
+#mod_ebs%>%
+#  mutate(month=month(date) ) %>%
+#  filter(bsierp_id %in% c(1,3,5,6) & month %in% c(4,5,6))%>%
+#    summarise(no_filter=n())%>%
+#  bind_cols(mod_ebs %>%
+#              mutate(month=month(date) ) %>%
+#  filter(bsierp_id %in% c(1,3,5,6) & month %in% c(4,5,6) & depth <(-50) & depth>(-200) & statefed == "FED")%>%
+#  summarise(depth_filter=n())) %>% 
+#  mutate(percent_remaining=depth_filter/no_filter*100)
 #<12% removed by filter... didn't make much of a difference here.
 
 #plot scaled
 chla_scale(bsierp, indicator)
+
+#barplot
+count_plot(bsierp, indicator)
+
 ```
 
 **Spring_Chlorophylla_Biomass_EGOA_Satellite**
+
+```{r}
+rm(mod_ebs);rm(occ_ebs)
+mod_goa<-readRDS("Data/MODIS/merged_8day_2003_2021_GOA.RDS")
+
+occ_goa<-readRDS("Data/OCCCI/occ8_strata_goa.RDS")
+
+```
 
 ```{r, warning=FALSE, message=FALSE}
 ak<-AK_basemap()
@@ -169,7 +226,8 @@ mod_EGOA_10 <- mod_goa %>%
          YEAR=year(date)) %>%
   filter(nmfsarea %in% c(640,650) & month%in% c(4:6) & depth<(-10) & depth>(-200)) %>%
   group_by(YEAR) %>%
-  summarise(MODIS_VALUE_NF=mean(chlorophyll,na.rm=TRUE))
+  summarise(MODIS_VALUE_NF=mean(chlorophyll,na.rm=TRUE),
+            MODIS_N=n())
 
 #50m filter
 mod_EGOA_50 <- mod_goa %>%
@@ -181,39 +239,52 @@ mod_EGOA_50 <- mod_goa %>%
 
 
 #OCC
-occci_EGOA_10<-occ_esp%>%
+occci_EGOA_10<-occ_goa%>%
   filter(NMFS_REP_AREA%in% c(640, 650) & month %in% c(4:6) & depth<(-10) & depth>(-200))%>%
    mutate(YEAR=year) %>%
   group_by(YEAR)%>%
-  summarise(OCCCI_VALUE_NF=mean(chlorophyll,na.rm=TRUE))
+  summarise(OCCCI_VALUE_NF=mean(chlorophyll,na.rm=TRUE),
+            OCCCI_N=n())
 
-occci_EGOA_50<-occ_esp%>%
+occci_EGOA_50<-occ_goa%>%
   filter(NMFS_REP_AREA%in% c(640, 650) & month %in% c(4:6) & depth<(-50) & depth>(-200) & WATERS_COD== "FED")%>%
  mutate(YEAR=year) %>%
   group_by(YEAR)%>%
   summarise(OCCCI_VALUE_F=mean(chlorophyll,na.rm=TRUE))
 
+#VIIRS
+VIIRS_EGOA<-viirs%>%
+  filter(NMFS_REP_AREA%in% c(640, 650) & month %in% c(4:6) & depth<(-10) & depth>(-200))%>%
+   mutate(YEAR=year) %>%
+  group_by(YEAR)%>%
+  summarise(VIIRS_VALUE=mean(chlorophyll,na.rm=TRUE),
+            VIIRS_N=n())
+
 #plot
-egoa<-chla_join(occci_EGOA_10, occci_EGOA_50, mod_EGOA_10, mod_EGOA_50)
+egoa<-chla_join(occci_EGOA_10, occci_EGOA_50, mod_EGOA_10, mod_EGOA_50, VIIRS_EGOA)
 
 chla_timeplot(egoa, indicator)
 
+chla_timeplot_depth(egoa, indicator)
 
 #how much was filtered out?
-mod_goa%>%
-  mutate(month=month(date) ) %>%
-  filter(nmfsarea %in% c(640, 650) & month %in% c(4,5,6) & depth <(-10) & depth>(-200))%>%
-    summarise(ten_m_filter=n())%>%
-  bind_cols(mod_goa %>%
-              mutate(month=month(date) ) %>%
-  filter(nmfsarea %in% c(640, 650) & month %in% c(4,5,6) & depth <(-50) & depth>(-200) & statefed == "FED")%>%
-  summarise(fifty_m_filter=n())) %>% 
-  mutate(percent_remaining=fifty_m_filter/ten_m_filter*100)
+#mod_goa%>%
+#  mutate(month=month(date) ) %>%
+#  filter(nmfsarea %in% c(640, 650) & month %in% c(4,5,6) & depth <(-10) & depth>(-200))%>%
+#    summarise(ten_m_filter=n())%>%
+#  bind_cols(mod_goa %>%
+#              mutate(month=month(date) ) %>%
+#  filter(nmfsarea %in% c(640, 650) & month %in% c(4,5,6) & depth <(-50) & depth>(-200) & statefed == "FED")%>%
+#  summarise(fifty_m_filter=n())) %>% 
+#  mutate(percent_remaining=fifty_m_filter/ten_m_filter*100)
 
 #<14% removed by filter... didn't make much of a difference here.
 
 #scale plot
 chla_scale(egoa, indicator)
+
+#count
+count_plot(egoa, indicator)
 ```
 
 **Spring_Chlorophylla_Biomass_WCGOA_Satellite**
@@ -229,7 +300,8 @@ mod_WGOA_10 <- mod_goa %>%
          YEAR=year(date)) %>%
   filter(nmfsarea %in% c(610, 620, 630) & month%in% c(4:6) & depth<(-10) & depth>(-200)) %>%
   group_by(YEAR) %>%
-  summarise(MODIS_VALUE_NF=mean(chlorophyll,na.rm=TRUE))
+  summarise(MODIS_VALUE_NF=mean(chlorophyll,na.rm=TRUE),
+            MODIS_N=n())
 
 #50m filter
 mod_WGOA_50 <- mod_goa %>%
@@ -240,36 +312,49 @@ mod_WGOA_50 <- mod_goa %>%
   summarise(MODIS_VALUE_F=mean(chlorophyll,na.rm=TRUE))
 
 #OCC
-occci_WGOA_10<-occ_esp%>%
+occci_WGOA_10<-occ_goa%>%
   filter(NMFS_REP_AREA%in% c(610, 620, 630) & month %in% c(4:6) & depth<(-10) & depth>(-200))%>%
    mutate(YEAR=year) %>%
   group_by(YEAR)%>%
-  summarise(OCCCI_VALUE_NF=mean(chlorophyll,na.rm=TRUE))
+  summarise(OCCCI_VALUE_NF=mean(chlorophyll,na.rm=TRUE),
+            OCCCI_N=n())
 
-occci_WGOA_50<-occ_esp%>%
+occci_WGOA_50<-occ_goa%>%
   filter(NMFS_REP_AREA%in% c(610, 620, 630) & month %in% c(4:6) & depth<(-50) & depth>(-200) & WATERS_COD== "FED")%>%
  mutate(YEAR=year) %>%
   group_by(YEAR)%>%
   summarise(OCCCI_VALUE_F=mean(chlorophyll,na.rm=TRUE))
 
+#VIIRS
+VIIRS_WGOA<-viirs%>%
+  filter(NMFS_REP_AREA%in% c(610, 620, 630) & month %in% c(4:6) & depth<(-10) & depth>(-200))%>%
+   mutate(YEAR=year) %>%
+  group_by(YEAR)%>%
+  summarise(VIIRS_VALUE=mean(chlorophyll,na.rm=TRUE),
+            VIIRS_N=n())
+
 #join
-wgoa<-chla_join(occci_WGOA_10, occci_WGOA_50, mod_WGOA_10, mod_WGOA_50)
+wgoa<-chla_join(occci_WGOA_10, occci_WGOA_50, mod_WGOA_10, mod_WGOA_50, VIIRS_WGOA)
 
 #plot
 chla_timeplot(wgoa, indicator)
 
+chla_timeplot_depth(egoa, indicator)
+
+
 #how much was filtered out?
-mod_goa%>%
-  mutate(month=month(date) ) %>%
-  filter(nmfsarea %in% c(610, 620, 630) & month %in% c(4,5,6) & depth <(-10) & depth>(-200))%>%
-    summarise(ten_m_filter=n())%>%
-  bind_cols(mod_goa %>%
-              mutate(month=month(date) ) %>%
-  filter(nmfsarea %in% c(610, 620, 630) & month %in% c(4,5,6) & depth <(-50) & depth>(-200) & statefed == "FED")%>%
-  summarise(fifty_m_filter=n())) %>% 
-  mutate(percent_remaining=fifty_m_filter/ten_m_filter*100)
+#mod_goa%>%
+#  mutate(month=month(date) ) %>%
+#  filter(nmfsarea %in% c(610, 620, 630) & month %in% c(4,5,6) & depth <(-10) & depth>(-200))%>%
+#    summarise(ten_m_filter=n())%>%
+#  bind_cols(mod_goa %>%
+#              mutate(month=month(date) ) %>%
+#  filter(nmfsarea %in% c(610, 620, 630) & month %in% c(4,5,6) & depth <(-50) & depth>(-200) & statefed == "FED")%>%
+#  summarise(fifty_m_filter=n())) %>% 
+#  mutate(percent_remaining=fifty_m_filter/ten_m_filter*100)
 
 #<19% removed by filter.
 
 chla_scale(wgoa, indicator)
+count_plot(wgoa, indicator)
 ```
