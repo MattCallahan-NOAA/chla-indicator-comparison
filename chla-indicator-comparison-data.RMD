@@ -427,4 +427,179 @@ saveRDS(viirs_esr, "Data/VIIRS/viirs_strata.RDS")
 ```
 
 **2021 MODIS**
+```{r}
 
+#Download 
+download.file(url = "https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdMH1chla8day.nc?chlorophyll%5B(2020-03-31T12:00:00Z):(2020-07-01T12:00:00Z)%5D%5B(69.02083):(46.02083)%5D%5B(-179.9792):(-129.9792)%5D&.draw=surface&.vars=longitude%7Clatitude%7CsstMasked&.colorBar=%7C%7C%7C%7C%7C&.bgColor=0xffccccff", method = "libcurl", mode="wb",destfile = "Data/MODIS/mod_2020.nc")
+
+download.file(url = "https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdMH1chla8day.nc?chlorophyll%5B(2021-03-31T12:00:00Z):(2021-07-01T12:00:00Z)%5D%5B(69.02083):(46.02083)%5D%5B(-179.9792):(-129.9792)%5D&.draw=surface&.vars=longitude%7Clatitude%7CsstMasked&.colorBar=%7C%7C%7C%7C%7C&.bgColor=0xffccccff", method = "libcurl", mode="wb",destfile = "Data/MODIS/mod_2021.nc")
+
+
+
+#Load lkp table from google folder
+mlkp<-read.csv("Data/MODIS/new_chl_lookup.csv")%>%
+  mutate(latc=as.numeric(substr(latitude, 1, 7)),
+         longc=as.numeric(substr(longitude, 1, 9)))
+#just the aleutians???
+ggplot()+
+  geom_point(data=mlkp, aes(x=ifelse(longc>0, longc, longc+360), y=latc))
+
+#I'll just do the point in polygon
+bsierp_reg<-AK_marine_area(area="BSIERP Region")%>%filter(BSIERP_ID %in% c(1,3,5,6))
+wcgoa<-AK_marine_area()%>%filter(NMFS_REP_AREA %in% c(610,620,630))
+
+#confirm tidync function still works
+tidy_chl<-function(file) {
+  tidync(file) %>% 
+  hyper_tibble()%>% 
+  mutate(date=as_datetime(time),
+         latc=as.numeric(substr(latitude, 1, 7)),
+         longc=as.numeric(substr(longitude, 1, 9)),
+         chlorophyll=round(chlorophyll,3),
+         year=year(date),
+         month=month(date))
+}
+#load 2020-2021 modis
+mod_2020<-tidy_chl("Data/MODIS/mod_2020.nc")
+mod_2021<-tidy_chl("Data/MODIS/mod_2021.nc")
+#get extents
+st_bbox(bsierp_reg)
+st_bbox(wcgoa)
+#point in polygon operations to attribute regions
+#2020 EBS
+#convert to spatial object
+mod_2020_ebs<-mod_2020%>%
+  st_as_sf(coords = c('longitude', 'latitude'), crs = 4326, agr = 'constant')
+
+mod_2020_strata<-mod_2020_ebs%>%st_join(bsierp_reg, join = st_within)
+
+mod_2020_bs_strata<-mod_2020_strata %>% data.frame() %>%
+  dplyr::select(chlorophyll, date, month, year, latc, longc, BSIERP_ID, BSIERP_Region_Name)
+#save
+saveRDS(mod_2020_bs_strata, "Data/MODIS/mod_2020_bs_strata.RDS")
+
+#2020 goa
+mod_2020_goa<-mod_2020%>%
+  #filter to goa extent
+  filter(longitude>=-170 & longitude <=-147 & latitude>49 & latitude<62)%>%
+  st_as_sf(coords = c('longitude', 'latitude'), crs = 4326, agr = 'constant')
+
+mod_2020_goa_strata<-mod_2020_goa%>%st_join(wcgoa, join = st_within)
+
+mod_2020_wcgoa_strata<-mod_2020_goa_strata %>% data.frame() %>%
+  dplyr::select(chlorophyll, date, month, year, latc, longc, NMFS_REP_AREA)
+#save
+saveRDS(mod_2020_wcgoa_strata, "Data/MODIS/mod_2020_wcgoa_strata.RDS")
+
+#2021
+#EBS
+#convert to spatial object
+mod_2021_ebs<-mod_2021%>%
+  filter(longitude>=-173 & longitude <=-159 & latitude>54 & latitude<60)%>%
+  st_as_sf(coords = c('longitude', 'latitude'), crs = 4326, agr = 'constant')
+
+mod_2021_strata<-mod_2021_ebs%>%st_join(bsierp_reg, join = st_within)
+
+mod_2021_bs_strata<-mod_2021_strata %>% data.frame() %>%
+  dplyr::select(chlorophyll, date, month, year, latc, longc, BSIERP_ID, BSIERP_Region_Name)
+#save
+saveRDS(mod_2021_bs_strata, "Data/MODIS/mod_2021_bs_strata.RDS")
+
+#2021 goa
+mod_2021_goa<-mod_2021%>%
+  #filter to goa extent
+  filter(longitude>=-170 & longitude <=-147 & latitude>49 & latitude<62)%>%
+  st_as_sf(coords = c('longitude', 'latitude'), crs = 4326, agr = 'constant')
+
+mod_2021_goa_strata<-mod_2021_goa%>%st_join(wcgoa, join = st_within)
+
+mod_2021_wcgoa_strata<-mod_2021_goa_strata %>% data.frame() %>%
+  dplyr::select(chlorophyll, date, month, year, latc, longc, NMFS_REP_AREA)
+#save
+saveRDS(mod_2021_wcgoa_strata, "Data/MODIS/mod_2021_wcgoa_strata.RDS")
+
+```
+
+Determine if values differ-They are essentially the same for BSIERP
+WCGOA is 0.08 off in 2021, which is the larges difference... close enought for these purposes...
+
+```{r}
+#BSIERP
+new_bsierp<-readRDS("Data/MODIS/mod_2020_bs_strata.RDS")%>%
+  bind_rows(mod_2021_bs_strata)%>%
+  mutate(YEAR=year,
+         ) %>%
+  filter(BSIERP_ID %in% c(1,3,5,6) & month%in% c(4,5,6))%>%
+  group_by(YEAR)%>%
+  summarise(MODIS_VALUE_recalc=round(mean(chlorophyll, na.rm=T),2),
+            MODIS_N_recalc=n())
+
+old_bsierp<-readRDS("Data/MODIS/merged_8day_2003_2021_EBS.RDS")%>%
+  mutate(month=month(date),
+         YEAR=year(date),
+         ) %>%
+  filter(bsierp_id %in% c(1,3,5,6) & month %in% c(4,5,6) #& depth <(-50) & depth>(-200)
+         )%>%
+  group_by(YEAR)%>%
+  summarise(MODIS_VALUE_ESP=round(mean(chlorophyll, na.rm=T),2),
+            MODIS_N_ESP=n())
+
+
+new_bsierp%>%inner_join(old_bsierp, by="YEAR")
+
+#GOA
+#we'll skip the depth filter for this purpose
+new_goa<-mod_2020_wcgoa_strata%>%
+  bind_rows(mod_2021_wcgoa_strata)%>%
+  mutate(YEAR=year,
+         ) %>%
+  filter(NMFS_REP_AREA %in% c(610, 620, 630) & month%in% c(4,5,6))%>%
+  group_by(YEAR)%>%
+  summarise(MODIS_VALUE_recalc=round(mean(chlorophyll, na.rm=T),2),
+            MODIS_N_recalc=n())
+
+old_goa<-readRDS("Data/MODIS/merged_8day_2003_2021_GOA.RDS")%>%
+  mutate(month=month(date),
+         YEAR=year(date),
+         ) %>%
+  filter(nmfsarea %in% c(610, 620, 630) & month %in% c(4,5,6) #& depth <(-50) & depth>(-200)
+         )%>%
+  group_by(YEAR)%>%
+  summarise(MODIS_VALUE_ESP=round(mean(chlorophyll, na.rm=T),2),
+            MODIS_N_ESP=n())
+
+
+new_goa%>%inner_join(old_goa, by="YEAR")
+
+```
+
+
+#code to combine?
+Not finished
+
+```{r}
+#EBS
+mod_ebs<-readRDS("Data/MODIS/merged_8day_2003_2021_EBS.RDS")%>%
+  filter(year>2020)%>%
+  mutate(year=year(date),
+         month=month(date))%>%
+  dplyr::select(chlorophyll, longitude, latitude, date, year, month, bsierp_name, bsierp_id)
+
+new_ebs<-mod_2020_bs_strata%>%
+  bind_row(mod_2021_bs_strata)%>%
+  muatate(latitude=latc,
+          longitude=longc,
+          bsierp_name=BSIERP_REGION_NAME,
+          bsierp_id=BSIERP_ID)
+
+
+#GOA
+mod_goa<-readRDS("Data/MODIS/merged_8day_2003_2021_GOA.RDS")%>%
+  filter(year>2020)
+
+new_goa<-mod_2020_wcgoa_strata%>%
+  bind_row(mod_2021_wcgoa_strata)%>%
+  muatate(latitude=latc,
+          longitude=longc)
+
+```

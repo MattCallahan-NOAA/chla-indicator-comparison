@@ -101,13 +101,13 @@ Lookup table code on sharefile Personal folders>projects>chlorophyll...
 ```{r}
 #MODIS
 mod_ebs<-readRDS("Data/MODIS/merged_8day_2003_2021_EBS.RDS")
-
+#occci
 occ_ebs<-readRDS("Data/OCCCI/occ8_strata_ebs.RDS")
-
+#viirs
 viirs<-readRDS("Data/VIIRS/viirs_strata.RDS")
 ```
 
-**Run**
+**Compare products**
 
 ```{r, warning=FALSE, message=FALSE}
 #define indicator
@@ -191,6 +191,102 @@ chla_scale(bsierp, indicator)
 count_plot(bsierp, indicator)
 
 ```
+
+*compare modis record counts*
+This is to check whether the 2020 and later record counts result from our MODIS file inadvertently missing some data or if there are really way fewer records. 
+
+Unfortunately it demonstrates that the MODIS files previously used were missing ~50% of the data. While this should certainly be corrected in future products, the missing data are spread evenly throughout space, and affects on indicator values, aggregated over large areas, will likely be minimal. 
+
+```{r}
+#compare newly downloaded MODIS with mod_esr_ndf 
+#value and record counts for 2020
+mod_2020_bsierp<-readRDS("Data/MODIS/mod_2020_bs_strata.RDS")%>%
+  mutate(YEAR=year(date),
+         ) %>%
+  filter(BSIERP_ID %in% c(1,3,5,6) & month %in% c(4,5,6) #& depth <(-50) & depth>(-200)
+         ) %>%
+  group_by(YEAR)%>%
+  summarise(MODIS_VALUE_recalc=round(mean(chlorophyll, na.rm=T),2),
+            MODIS_N_recalc=n())
+
+
+mod_2020_bsierp%>%inner_join(mod_esr_ndf%>%rename(c("MODIS_VALUE_ESP"="MODIS_VALUE_NF", "MODIS_N_ESP"="MODIS_N")), by="YEAR")
+
+#huh, the value is the same but we're missing a lot of values in our existing file.
+#filter to BSIERP regions and year=2020
+mod_old<-mod_ebs%>%
+  mutate(month=month(date),
+         year=year(date),
+         ) %>%
+  filter(bsierp_id %in% c(1,3,5,6) & month %in% c(4,5,6) & year==2020)
+
+
+mod_new<-readRDS("Data/MODIS/mod_2020_bs_strata.RDS")%>%
+  mutate(YEAR=year(date),
+         date=as.Date(date)
+         ) %>%
+  filter(BSIERP_ID %in% c(1,3,5,6) & month %in% c(4,5,6) #& depth <(-50) & depth>(-200)
+         )
+#New one has twice as many values...
+mod_old%>%
+  group_by(date)%>%
+  summarise(N_old=n())%>%
+  inner_join(mod_new%>%
+  group_by(date)%>%
+  summarise(N_new=n()), by="date")
+
+#any NAs in the new?
+any(is.na(mod_new$chlorophyll))
+#No....
+
+#let's plot them in one region
+ggplot()+
+  geom_point(data=mod_new%>%filter(date=="2020-06-05" & BSIERP_ID=="5"), aes(x=longc, y=latc), color="red")+
+  geom_point(data=mod_old%>%filter(date=="2020-06-05" & bsierp_id==5), aes(x=longitude, y=latitude), color="black")
+
+#unfortunately the MODIS date previously used for ESPs inadvertently excluded some data. 
+#Fortunately the aggregated value was unaffected. 
+```
+
+*Demonstrate integrity of other products*
+OC-CCI and viirs don't have the skipped data that the 2020 MODIS files had. Nor do the 2019 (and presumably earlier) MODIS files. Those lookup tables can be tricky...
+```{r}
+#occci
+occci_bsierp_5<-occ_ebs%>%
+  mutate(date=as.Date(date))%>%
+  filter(BSIERP_ID ==5 & date=="2020-06-01")
+
+ggplot()+
+  geom_point(data=mod_new%>%filter(date=="2020-06-05" & BSIERP_ID=="5"), aes(x=longc, y=latc), color="red")+
+  geom_point(data=occci_bsierp_5, aes(x=longc, y=latc), color="black")
+
+#Nice OC-CCI looks good.
+
+#VIIRS
+#occci
+viirs_bsierp_5<-viirs%>%
+  mutate(date=as.Date(date))%>%
+  filter(BSIERP_ID ==5 & year==2020)
+
+ggplot()+
+  #geom_point(data=mod_new%>%filter(date=="2020-06-05" & BSIERP_ID=="5"), aes(x=longc, y=latc), color="red")+
+  geom_point(data=viirs_bsierp_5%>%filter(date=="2020-05-27"), aes(x=longitude, y=latitude), color="black")
+#VIIRS also looks good
+
+#MODIS in 2019
+
+mod_2019<-mod_ebs%>%
+  mutate(month=month(date),
+         year=year(date),
+         ) %>%
+  filter(bsierp_id ==5  & year==2019)
+
+ggplot()+
+  geom_point(data=mod_2019%>%filter(date=="2019-05-29"), aes(x=longitude, y=latitude), color="black")
+
+
+```
+
 
 **Spring_Chlorophylla_Biomass_EGOA_Satellite**
 
@@ -284,7 +380,7 @@ chla_timeplot_depth(egoa, indicator)
 chla_scale(egoa, indicator)
 
 #count
-count_plot(egoa, indicator)
+#count_plot(egoa, indicator)
 ```
 
 **Spring_Chlorophylla_Biomass_WCGOA_Satellite**
@@ -356,5 +452,5 @@ chla_timeplot_depth(egoa, indicator)
 #<19% removed by filter.
 
 chla_scale(wgoa, indicator)
-count_plot(wgoa, indicator)
+#count_plot(wgoa, indicator)
 ```
